@@ -141,20 +141,25 @@ export const replaceDirnamePlugin = (): EsbuildPlugin => {
     setup(ctx) {
       ctx.onLoad({ filter: JS_EXT_RE }, async (args) => {
         const contents = await fs.promises.readFile(args.path, "utf-8")
+        const replacements = {
+          __filename: JSON.stringify(args.path),
+          __dirname: JSON.stringify(path.dirname(args.path)),
+          "import.meta.url": JSON.stringify(`file://${args.path}`),
+        }
         return {
-          contents: contents
-            .replace(
-              /[^"'\\]\b__filename\b[^"'\\]/g,
-              match => match.replace('__filename', JSON.stringify(args.path))
-            )
-            .replace(
-              /[^"'\\]\b__dirname\b[^"'\\]/g,
-              match => match.replace('__dirname', JSON.stringify(path.dirname(args.path)))
-            )
-            .replace(
-              /[^"'\\]\bimport\.meta\.url\b[^"'\\]/g,
-              match => match.replace('import.meta.url', JSON.stringify(`file://${args.path}`)),
-            ),
+          contents: contents.replace(
+            /(([^]|\/(?![*/]))*)(\/(?:\/.*|\*(?:[^*]|\*(?:\/))*\*\/))?/g,
+            (_, source: string, comment) =>
+              source.replace(
+                /([^"'`]*)("(?:(?:\\")|[^"\n\r])*"|'(?:(?:\\')|[^'\n\r])*'|`(?:(?:\\`)|[^`])*`)?/g,
+                (_, code: string, string) =>
+                  code.replace(
+                    /\b(?:__filename|__dirname|import\.meta\.url)\b/g,
+                    (token) =>
+                      replacements[token as keyof typeof replacements] || token,
+                  ) + (string || ""),
+              ) + (comment || ""),
+          ),
           loader: inferLoader(path.extname(args.path)),
         }
       })
